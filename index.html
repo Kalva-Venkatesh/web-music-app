@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>My Music App</title>
+
+  <!-- React + Babel for JSX -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Tailwind CSS + FontAwesome + megajs UMD -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://unpkg.com/megajs@1/dist/main.browser-umd.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    :root {
+      --bg: #0b0b0c;
+      --panel: #101214;
+      --muted: #9aa3a8;
+      --neon: #1DB954;
+      --accent: rgba(29, 185, 84, 0.14);
+      --glass: rgba(255, 255, 255, 0.02);
+    }
+    html, body, #root { height: 100%; }
+
+    @keyframes background-pan {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: radial-gradient(1200px 600px at 10% 10%, rgba(29,185,84,0.1), transparent 40%),
+                  radial-gradient(900px 500px at 90% 90%, rgba(0,120,255,0.08), transparent 50%),
+                  var(--bg);
+      background-size: 400% 400%;
+      animation: background-pan 35s ease infinite;
+      color: #e6eef1;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    .panel {
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+      border: 1px solid rgba(255,255,255,0.05);
+      box-shadow: 0 8px 32px rgba(2,6,8,0.7);
+      backdrop-filter: blur(10px);
+    }
+    /* Custom scrollbar for playlist */
+    #playlist::-webkit-scrollbar { width: 6px; }
+    #playlist::-webkit-scrollbar-track { background: transparent; }
+    #playlist::-webkit-scrollbar-thumb { background: var(--neon); border-radius: 999px; }
+    #playlist::-webkit-scrollbar-thumb:hover { background: #188944; }
+
+    /* Toasts / Notifications */
+    .toast {
+        background-color: var(--panel);
+        color: var(--neon);
+        padding: 1rem 1.5rem;
+        border-radius: 0.5rem;
+        border-left: 4px solid var(--neon);
+        box-shadow: 0 4px 20px rgba(29, 185, 84, 0.3);
+        transform: translateX(120%);
+        transition: transform 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+    .toast.show { transform: translateX(0); }
+    .toast.error { color: #f87171; border-left-color: #f87171; box-shadow: 0 4px 20px rgba(248, 113, 113, 0.3); }
+
+  </style>
+</head>
+<body class="overflow-hidden">
+
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // --- Configuration for Music Collections ---
+    // IMPORTANT: Replace placeholders with your actual public MEGA folder URLs.
+    const musicCollections = [
+      { name: 'Hanuman Songs', icon: 'fas fa-om', megaUrl: 'https://mega.nz/folder/...' }, // Example from your request
+      { name: 'Lo-Fi Beats', icon: 'fas fa-headphones', megaUrl: 'https://mega.nz/folder/...' },
+      { name: 'Workout Hits', icon: 'fas fa-dumbbell', megaUrl: 'https://mega.nz/folder/xMtmxLbT#i7vFt_r_e3iPIn1cINWgbA' },
+      { name: 'Classical Mood', icon: 'fas fa-guitar', megaUrl: 'https://mega.nz/folder/...' },
+      { name: 'Podcast Specials', icon: 'fas fa-microphone-alt', megaUrl: 'https://mega.nz/folder/...' },
+      { name: 'Retro Vibes', icon: 'fas fa-compact-disc', megaUrl: '' }, // Example with no link
+    ];
+    
+    // --- Helper Components ---
+    const Toast = ({ message, type }) => {
+        const [show, setShow] = useState(false);
+
+        useEffect(() => {
+            setShow(true);
+            const timer = setTimeout(() => {
+                setShow(false);
+            }, 3000);
+            return () => clearTimeout(timer);
+        }, []);
+
+        return (
+            <div className={`toast ${type} ${show ? 'show' : ''}`}>
+                {message}
+            </div>
+        );
+    };
+    
+    // --- Main App Components ---
+    const CollectionSelector = ({ onSelectCollection }) => {
+        return (
+            <div className="flex flex-col items-center justify-center h-full p-4 md:p-8">
+                <h1 className="text-4xl md:text-5xl font-bold mb-8" style={{ textShadow: '0 0 15px var(--neon)'}}>My Music App</h1>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 md:gap-6 w-full max-w-6xl">
+                    {musicCollections.map(collection => (
+                        <div
+                            key={collection.name}
+                            onClick={() => collection.megaUrl && onSelectCollection(collection)}
+                            className={`
+                                panel aspect-square rounded-lg flex flex-col items-center justify-center p-4 text-center
+                                transition-all duration-300 transform
+                                ${collection.megaUrl ? 'cursor-pointer hover:scale-105 hover:border-neon' : 'opacity-50 cursor-not-allowed'}
+                            `}
+                            style={collection.megaUrl ? { borderColor: 'rgba(255,255,255,0.05)' } : {}}
+                        >
+                            <i className={`${collection.icon} text-4xl md:text-5xl text-neon mb-3`} style={{ textShadow: '0 0 10px var(--neon)'}}></i>
+                            <span className="font-semibold text-sm md:text-base">{collection.name}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
+    const MusicPlayer = ({ collection, onBack }) => {
+        const [tracks, setTracks] = useState([]);
+        const [currentIndex, setCurrentIndex] = useState(-1);
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [isLoading, setIsLoading] = useState(true);
+        const [currentTime, setCurrentTime] = useState(0);
+        const [duration, setDuration] = useState(0);
+        const [volume, setVolume] = useState(1);
+        const [toasts, setToasts] = useState([]);
+        const [shuffle, setShuffle] = useState(false);
+        const [repeatMode, setRepeatMode] = useState('off'); // 'off', 'one', 'all'
+        const [playbackRate, setPlaybackRate] = useState(1);
+        const audioRef = useRef(null);
+        const blobUrlRef = useRef(null);
+        const lastVolumeRef = useRef(1);
+
+        const showToast = (message, type = 'success') => {
+            const id = Date.now();
+            setToasts(prev => [...prev, { id, message, type }]);
+            setTimeout(() => {
+                setToasts(currentToasts => currentToasts.filter(toast => toast.id !== id));
+            }, 3200);
+        };
+
+        const fetchTracks = useCallback(async () => {
+            setIsLoading(true);
+            
+            if (!collection.megaUrl || !collection.megaUrl.includes('#')) {
+                showToast('Invalid MEGA URL. Please provide a valid link.', 'error');
+                setTracks([]);
+                setIsLoading(false);
+                return;
+            }
+
+            try {
+                const folder = window.mega.File.fromURL(collection.megaUrl);
+                await folder.loadAttributes();
+                const audioFiles = folder.children.filter(f => /\.(mp3|m4a|wav|flac)$/i.test(f.name));
+                
+                if (!audioFiles.length) {
+                    showToast('No supported audio files found in this folder.', 'error');
+                    setTracks([]);
+                    setIsLoading(false);
+                    return;
+                }
+                
+                const trackMeta = audioFiles.map((f, i) => ({
+                    file: f,
+                    title: f.name.replace(/\.[^/.]+$/, ''),
+                    filename: f.name,
+                    sizeMB: (f.size / 1024 / 1024).toFixed(2),
+                }));
+                setTracks(trackMeta);
+            } catch (err) {
+                console.error(err);
+                showToast('Failed to load folder. Check link/permissions.', 'error');
+            } finally {
+                setIsLoading(false);
+            }
+        }, [collection.megaUrl]);
+
+        useEffect(() => {
+            fetchTracks();
+        }, [fetchTracks]);
+        
+        const revokeBlob = () => {
+          if (blobUrlRef.current) {
+            try { URL.revokeObjectURL(blobUrlRef.current); } catch (e) {}
+            blobUrlRef.current = null;
+          }
+        };
+        
+        const playTrack = useCallback(async (index) => {
+            if (index < 0 || index >= tracks.length) return;
+            
+            setIsLoading(true);
+            setCurrentIndex(index);
+
+            try {
+                revokeBlob();
+                const track = tracks[index];
+                const data = await track.file.downloadBuffer();
+                const mimeType = { mp3:'audio/mpeg', m4a:'audio/mp4', wav:'audio/wav', flac:'audio/flac' }[track.filename.split('.').pop().toLowerCase()] || 'audio/mpeg';
+                const blob = new Blob([data], { type: mimeType });
+                const url = URL.createObjectURL(blob);
+                blobUrlRef.current = url;
+                
+                if (audioRef.current) {
+                    audioRef.current.src = url;
+                    audioRef.current.playbackRate = playbackRate;
+                    await audioRef.current.play();
+                }
+            } catch (err) {
+                console.error("Failed to play track", err);
+                showToast("Failed to load track.", "error");
+            } finally {
+                setIsLoading(false);
+            }
+        }, [tracks, playbackRate]);
+        
+        const handlePlayPause = () => {
+            if (currentIndex === -1 && tracks.length > 0) {
+                playTrack(0);
+            } else if (audioRef.current) {
+                if (audioRef.current.paused) {
+                    audioRef.current.play();
+                } else {
+                    audioRef.current.pause();
+                }
+            }
+        };
+
+        const handleNext = useCallback(() => {
+            if (tracks.length === 0) return;
+
+            if (shuffle) {
+                let nextIndex;
+                do {
+                    nextIndex = Math.floor(Math.random() * tracks.length);
+                } while (tracks.length > 1 && nextIndex === currentIndex);
+                playTrack(nextIndex);
+                return;
+            }
+            
+            const nextIndex = currentIndex + 1;
+            if (nextIndex >= tracks.length) {
+                if (repeatMode === 'all') {
+                    playTrack(0);
+                }
+            } else {
+                playTrack(nextIndex);
+            }
+        }, [currentIndex, tracks.length, playTrack, shuffle, repeatMode]);
+
+        const handlePrev = () => {
+            if (tracks.length === 0) return;
+            if (audioRef.current.currentTime > 3) {
+                audioRef.current.currentTime = 0;
+            } else {
+                const prevIndex = (currentIndex - 1 + tracks.length) % tracks.length;
+                playTrack(prevIndex);
+            }
+        };
+        
+        useEffect(() => {
+            const audio = audioRef.current;
+            const updatePlayingState = () => setIsPlaying(!audio.paused);
+            const updateTime = () => setCurrentTime(audio.currentTime);
+            const updateDuration = () => setDuration(audio.duration);
+            
+            const handleEnded = () => {
+                if (repeatMode === 'one') {
+                    audio.currentTime = 0;
+                    audio.play();
+                } else {
+                    handleNext();
+                }
+            };
+
+            audio.addEventListener('play', updatePlayingState);
+            audio.addEventListener('pause', updatePlayingState);
+            audio.addEventListener('ended', handleEnded);
+            audio.addEventListener('timeupdate', updateTime);
+            audio.addEventListener('loadedmetadata', updateDuration);
+
+            return () => {
+                audio.removeEventListener('play', updatePlayingState);
+                audio.removeEventListener('pause', updatePlayingState);
+                audio.removeEventListener('ended', handleEnded);
+                audio.removeEventListener('timeupdate', updateTime);
+                audio.removeEventListener('loadedmetadata', updateDuration);
+                revokeBlob();
+            };
+        }, [handleNext, repeatMode]);
+        
+        const formatTime = (t) => {
+            if (!isFinite(t) || t === 0) return '0:00';
+            const m = Math.floor(t / 60);
+            const s = Math.floor(t % 60);
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        };
+
+        const cycleRepeatMode = () => {
+            setRepeatMode(prev => {
+                if (prev === 'off') return 'all';
+                if (prev === 'all') return 'one';
+                return 'off';
+            });
+        };
+
+        const handleVolumeChange = (e) => {
+            const newVolume = parseFloat(e.target.value);
+            setVolume(newVolume);
+            if (audioRef.current) {
+                audioRef.current.volume = newVolume;
+            }
+        };
+
+        const toggleMute = () => {
+            if (volume > 0) {
+                lastVolumeRef.current = volume;
+                setVolume(0);
+                if (audioRef.current) audioRef.current.volume = 0;
+            } else {
+                setVolume(lastVolumeRef.current);
+                if (audioRef.current) audioRef.current.volume = lastVolumeRef.current;
+            }
+        };
+
+        const handleSpeedChange = (e) => {
+            const newRate = parseFloat(e.target.value);
+            setPlaybackRate(newRate);
+            if (audioRef.current) {
+                audioRef.current.playbackRate = newRate;
+            }
+        };
+
+        const currentTrack = tracks[currentIndex];
+
+        return (
+            <div className="flex flex-col h-screen text-white">
+                <audio ref={audioRef} preload="auto"></audio>
+                <div id="toast-container" className="fixed bottom-5 right-5 z-50 flex flex-col gap-3">
+                    {toasts.map(toast => <Toast key={toast.id} {...toast} />)}
+                </div>
+
+                <div className="flex-grow flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
+                    {/* Left side: Playlist */}
+                    <aside className="panel rounded-lg w-full lg:w-1/3 flex flex-col overflow-hidden">
+                        <div className="p-4 border-b border-white/10 flex items-center gap-3">
+                           <button onClick={onBack} className="text-neon hover:text-white"><i className="fas fa-arrow-left"></i></button>
+                           <h2 className="text-xl font-bold truncate">{collection.name}</h2>
+                        </div>
+                        <div id="playlist" className="flex-1 overflow-y-auto p-2 space-y-2">
+                           {isLoading && !tracks.length ? (
+                               <div className="text-center p-8 text-muted">
+                                   <i className="fas fa-spinner fa-spin text-2xl"></i>
+                                   <p className="mt-2">Loading music...</p>
+                               </div>
+                           ) : tracks.length > 0 ? (
+                               tracks.map((track, index) => (
+                                   <div 
+                                      key={track.filename}
+                                      onClick={() => playTrack(index)}
+                                      className={`flex items-center gap-4 p-3 rounded-md cursor-pointer transition-all ${currentIndex === index ? 'bg-neon/20 border-l-4 border-neon' : 'hover:bg-white/5'}`}
+                                    >
+                                       <div className="text-center w-8 text-muted">{index + 1}</div>
+                                       <div className="truncate">
+                                           <p className="font-semibold truncate">{track.title}</p>
+                                           <p className="text-xs text-muted">{track.sizeMB} MB</p>
+                                       </div>
+                                   </div>
+                               ))
+                           ) : (
+                               <div className="text-center p-8 text-muted">No music found.</div>
+                           )}
+                        </div>
+                    </aside>
+
+                    {/* Right side: Player */}
+                    <main className="panel rounded-lg w-full lg:w-2/3 flex-1 flex flex-col justify-center p-6 md:p-8">
+                        <div className="flex flex-col items-center text-center">
+                            <div className="w-40 h-40 md:w-52 md:h-52 bg-gradient-to-br from-black/20 to-white/5 rounded-lg flex items-center justify-center shadow-lg mb-6">
+                                {currentTrack ? (
+                                    <div className="text-8xl font-bold" style={{color: 'var(--neon)', textShadow: '0 0 15px var(--neon)'}}>
+                                        {currentTrack.title.charAt(0).toUpperCase()}
+                                    </div>
+                                ) : (
+                                    <i className="fas fa-music text-6xl text-muted"></i>
+                                )}
+                            </div>
+                            <h2 className="text-2xl md:text-3xl font-bold truncate max-w-full">{currentTrack?.title || 'Select a Song'}</h2>
+                            <p className="text-muted mt-1">{collection.name}</p>
+
+                            {/* Progress Bar */}
+                            <div className="w-full max-w-lg mt-6">
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max={duration || 100}
+                                    value={currentTime}
+                                    onChange={(e) => audioRef.current.currentTime = e.target.value}
+                                    className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer"
+                                    style={{'--progress': `${(currentTime / duration) * 100}%`}}
+                                />
+                                <div className="flex justify-between text-xs text-muted mt-1">
+                                    <span>{formatTime(currentTime)}</span>
+                                    <span>{formatTime(duration)}</span>
+                                </div>
+                            </div>
+                            
+                            {/* Main Controls */}
+                            <div className="flex items-center gap-6 mt-6">
+                                <button title="Shuffle" onClick={() => setShuffle(!shuffle)} className={`text-xl transition-colors ${shuffle ? 'text-neon' : 'text-muted hover:text-white'}`}>
+                                    <i className="fas fa-shuffle"></i>
+                                </button>
+                                <button onClick={handlePrev} className="text-2xl text-muted hover:text-white transition-colors">
+                                    <i className="fas fa-backward-step"></i>
+                                </button>
+                                <button
+                                    onClick={handlePlayPause}
+                                    className="w-16 h-16 rounded-full flex items-center justify-center text-3xl transition-all transform hover:scale-105"
+                                    style={{ background: 'var(--neon)', color: 'var(--bg)', boxShadow: '0 0 25px var(--neon)' }}
+                                >
+                                    <i className={`fas ${isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
+                                </button>
+                                <button onClick={handleNext} className="text-2xl text-muted hover:text-white transition-colors">
+                                    <i className="fas fa-forward-step"></i>
+                                </button>
+                                <button title="Repeat" onClick={cycleRepeatMode} className={`relative text-xl transition-colors ${repeatMode !== 'off' ? 'text-neon' : 'text-muted hover:text-white'}`}>
+                                    <i className="fas fa-repeat"></i>
+                                    {repeatMode === 'one' && <span className="absolute text-xs -top-1 -right-2 bg-neon text-bg rounded-full w-4 h-4 flex items-center justify-center font-bold">1</span>}
+                                </button>
+                            </div>
+                            
+                            {/* Volume and Speed Controls */}
+                            <div className="flex items-center justify-between w-full max-w-sm mt-8">
+                                <div className="flex items-center gap-3 text-muted">
+                                    <i className="fas fa-tachometer-alt"></i>
+                                    <select 
+                                        value={playbackRate} 
+                                        onChange={handleSpeedChange}
+                                        className="bg-transparent text-muted text-sm focus:outline-none appearance-none"
+                                    >
+                                        <option value="0.5">0.5x</option>
+                                        <option value="1">1x</option>
+                                        <option value="1.5">1.5x</option>
+                                        <option value="2">2x</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-3 w-1/2 max-w-xs">
+                                    <button onClick={toggleMute}>
+                                        <i className={`fas ${volume === 0 ? 'fa-volume-xmark' : (volume < 0.5 ? 'fa-volume-low' : 'fa-volume-high')} text-muted`}></i>
+                                    </button>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="1"
+                                        step="0.01"
+                                        value={volume}
+                                        onChange={handleVolumeChange}
+                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            </div>
+        );
+    };
+
+
+    const App = () => {
+        const [selectedCollection, setSelectedCollection] = useState(null);
+
+        if (selectedCollection) {
+            return <MusicPlayer collection={selectedCollection} onBack={() => setSelectedCollection(null)} />;
+        }
+        
+        return <CollectionSelector onSelectCollection={setSelectedCollection} />;
+    };
+
+    const container = document.getElementById('root');
+    const root = ReactDOM.createRoot(container);
+    root.render(<App />);
+  </script>
+</body>
+</html>
+
