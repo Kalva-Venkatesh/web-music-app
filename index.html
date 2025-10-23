@@ -70,6 +70,79 @@
     .toast.show { transform: translateX(0); }
     .toast.error { color: #f87171; border-left-color: #f87171; box-shadow: 0 4px 20px rgba(248, 113, 113, 0.3); }
 
+    /* Custom Slider Styles */
+    input[type=range].progress-bar {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        outline: none;
+        cursor: pointer;
+    }
+    input[type=range].progress-bar::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        background: var(--neon);
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 0 10px var(--neon);
+        margin-top: -4px; /* Center thumb on track */
+    }
+    input[type=range].progress-bar::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        background: var(--neon);
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 0 10px var(--neon);
+    }
+    input[type=range].volume-bar {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        outline: none;
+        cursor: pointer;
+    }
+    input[type=range].volume-bar::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 12px;
+        height: 12px;
+        background: #fff;
+        border-radius: 50%;
+        cursor: pointer;
+        margin-top: -4px;
+    }
+    input[type=range].volume-bar::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        background: #fff;
+        border-radius: 50%;
+        cursor: pointer;
+    }
+    /* Custom Select */
+    select.speed-select {
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%239aa3a8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-13%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2013l128%20128c3.6%203.6%207.8%205.4%2013%205.4s9.4-1.8%2013-5.4l128-128c3.6-3.6%205.4-7.8%205.4-13%200-5-1.8-9.2-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E');
+        background-repeat: no-repeat;
+        background-position: right 0.5rem center;
+        background-size: 0.65em auto;
+        padding-right: 2rem;
+    }
+    select.speed-select option {
+        background: var(--panel);
+        color: #e6eef1;
+    }
+
   </style>
 </head>
 <body class="overflow-hidden">
@@ -77,7 +150,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef, useCallback } = React;
+    const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
     // --- Configuration for Music Collections ---
     // IMPORTANT: Replace placeholders with your actual public MEGA folder URLs.
@@ -147,9 +220,21 @@
         const [shuffle, setShuffle] = useState(false);
         const [repeatMode, setRepeatMode] = useState('off'); // 'off', 'one', 'all'
         const [playbackRate, setPlaybackRate] = useState(1);
+        const [searchTerm, setSearchTerm] = useState('');
+        const [sortMode, setSortMode] = useState('default'); // 'default', 'title-asc', 'title-desc'
+        
         const audioRef = useRef(null);
         const blobUrlRef = useRef(null);
         const lastVolumeRef = useRef(1);
+        
+        // For visualizer
+        const canvasRef = useRef(null);
+        const audioContextRef = useRef(null);
+        const analyserRef = useRef(null);
+        const sourceRef = useRef(null);
+        const dataArrayRef = useRef(null);
+        const animationFrameRef = useRef(null);
+        const [isAudioContextInit, setIsAudioContextInit] = useState(false);
 
         const showToast = (message, type = 'success') => {
             const id = Date.now();
@@ -186,6 +271,7 @@
                     title: f.name.replace(/\.[^/.]+$/, ''),
                     filename: f.name,
                     sizeMB: (f.size / 1024 / 1024).toFixed(2),
+                    originalIndex: i // Important: keep original index
                 }));
                 setTracks(trackMeta);
             } catch (err) {
@@ -200,22 +286,97 @@
             fetchTracks();
         }, [fetchTracks]);
         
+        // Memoize filtered and sorted tracks
+        const filteredAndSortedTracks = useMemo(() => {
+            let processedTracks = [...tracks];
+            
+            // 1. Sort
+            if (sortMode === 'title-asc') {
+                processedTracks.sort((a, b) => a.title.localeCompare(b.title));
+            } else if (sortMode === 'title-desc') {
+                processedTracks.sort((a, b) => b.title.localeCompare(a.title));
+            }
+            // 'default' sorting is the original fetch order, which is already set.
+
+            // 2. Filter
+            if (searchTerm) {
+                processedTracks = processedTracks.filter(track =>
+                    track.title.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+            }
+            
+            return processedTracks;
+        }, [tracks, sortMode, searchTerm]);
+
         const revokeBlob = () => {
           if (blobUrlRef.current) {
             try { URL.revokeObjectURL(blobUrlRef.current); } catch (e) {}
             blobUrlRef.current = null;
           }
         };
+
+        const initAudioContext = () => {
+            if (isAudioContextInit || !audioRef.current) return;
+            
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            const source = audioContext.createMediaElementSource(audioRef.current);
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+            
+            audioContextRef.current = audioContext;
+            analyserRef.current = analyser;
+            dataArrayRef.current = dataArray;
+            sourceRef.current = source;
+            
+            setIsAudioContextInit(true);
+        };
+
+        const drawVisualizer = () => {
+            if (!analyserRef.current || !canvasRef.current) {
+                animationFrameRef.current = requestAnimationFrame(drawVisualizer);
+                return;
+            };
+
+            const analyser = analyserRef.current;
+            const canvas = canvasRef.current;
+            const ctx = canvas.getContext('2d');
+            const dataArray = dataArrayRef.current;
+            const bufferLength = dataArray.length;
+            
+            analyser.getByteFrequencyData(dataArray);
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const barWidth = (canvas.width / bufferLength) * 1.5;
+            let x = 0;
+            
+            for (let i = 0; i < bufferLength; i++) {
+                const barHeight = (dataArray[i] / 255) * canvas.height;
+                
+                ctx.fillStyle = `rgba(29, 185, 84, ${0.5 + (dataArray[i] / 255) / 2})`;
+                ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+                
+                x += barWidth + 2; // Add 2 for spacing
+            }
+            
+            animationFrameRef.current = requestAnimationFrame(drawVisualizer);
+        };
         
-        const playTrack = useCallback(async (index) => {
-            if (index < 0 || index >= tracks.length) return;
+        const playTrack = useCallback(async (originalIndex) => {
+            const track = tracks.find(t => t.originalIndex === originalIndex);
+            if (!track) return;
             
             setIsLoading(true);
-            setCurrentIndex(index);
+            setCurrentIndex(originalIndex);
 
             try {
                 revokeBlob();
-                const track = tracks[index];
                 const data = await track.file.downloadBuffer();
                 const mimeType = { mp3:'audio/mpeg', m4a:'audio/mp4', wav:'audio/wav', flac:'audio/flac' }[track.filename.split('.').pop().toLowerCase()] || 'audio/mpeg';
                 const blob = new Blob([data], { type: mimeType });
@@ -236,8 +397,12 @@
         }, [tracks, playbackRate]);
         
         const handlePlayPause = () => {
+            if (!isAudioContextInit) {
+                initAudioContext();
+            }
+        
             if (currentIndex === -1 && tracks.length > 0) {
-                playTrack(0);
+                playTrack(filteredAndSortedTracks[0].originalIndex);
             } else if (audioRef.current) {
                 if (audioRef.current.paused) {
                     audioRef.current.play();
@@ -249,39 +414,63 @@
 
         const handleNext = useCallback(() => {
             if (tracks.length === 0) return;
+            
+            const currentList = filteredAndSortedTracks;
+            const currentListIndex = currentList.findIndex(t => t.originalIndex === currentIndex);
 
             if (shuffle) {
                 let nextIndex;
                 do {
-                    nextIndex = Math.floor(Math.random() * tracks.length);
-                } while (tracks.length > 1 && nextIndex === currentIndex);
-                playTrack(nextIndex);
+                    nextIndex = Math.floor(Math.random() * currentList.length);
+                } while (currentList.length > 1 && nextIndex === currentListIndex);
+                playTrack(currentList[nextIndex].originalIndex);
                 return;
             }
             
-            const nextIndex = currentIndex + 1;
-            if (nextIndex >= tracks.length) {
+            const nextListIndex = currentListIndex + 1;
+            if (nextListIndex >= currentList.length) {
                 if (repeatMode === 'all') {
-                    playTrack(0);
+                    playTrack(currentList[0].originalIndex);
                 }
             } else {
-                playTrack(nextIndex);
+                playTrack(currentList[nextListIndex].originalIndex);
             }
-        }, [currentIndex, tracks.length, playTrack, shuffle, repeatMode]);
+        }, [currentIndex, tracks.length, playTrack, shuffle, repeatMode, filteredAndSortedTracks]);
 
         const handlePrev = () => {
             if (tracks.length === 0) return;
             if (audioRef.current.currentTime > 3) {
                 audioRef.current.currentTime = 0;
             } else {
-                const prevIndex = (currentIndex - 1 + tracks.length) % tracks.length;
-                playTrack(prevIndex);
+                const currentList = filteredAndSortedTracks;
+                const currentListIndex = currentList.findIndex(t => t.originalIndex === currentIndex);
+                
+                let prevListIndex = currentListIndex - 1;
+                if (prevListIndex < 0) {
+                   prevListIndex = currentList.length - 1; // Wrap around
+                }
+                playTrack(currentList[prevListIndex].originalIndex);
             }
         };
         
         useEffect(() => {
             const audio = audioRef.current;
-            const updatePlayingState = () => setIsPlaying(!audio.paused);
+            const updatePlayingState = () => {
+                setIsPlaying(!audio.paused);
+                if (!audio.paused) {
+                    if (isAudioContextInit) {
+                        // Resume context if suspended
+                        if (audioContextRef.current.state === 'suspended') {
+                            audioContextRef.current.resume();
+                        }
+                        // Start visualizer
+                        animationFrameRef.current = requestAnimationFrame(drawVisualizer);
+                    }
+                } else {
+                    // Stop visualizer
+                    cancelAnimationFrame(animationFrameRef.current);
+                }
+            };
             const updateTime = () => setCurrentTime(audio.currentTime);
             const updateDuration = () => setDuration(audio.duration);
             
@@ -307,8 +496,9 @@
                 audio.removeEventListener('timeupdate', updateTime);
                 audio.removeEventListener('loadedmetadata', updateDuration);
                 revokeBlob();
+                cancelAnimationFrame(animationFrameRef.current);
             };
-        }, [handleNext, repeatMode]);
+        }, [handleNext, repeatMode, isAudioContextInit]);
         
         const formatTime = (t) => {
             if (!isFinite(t) || t === 0) return '0:00';
@@ -351,12 +541,16 @@
                 audioRef.current.playbackRate = newRate;
             }
         };
+        
+        const setSort = (mode) => {
+            setSortMode(prev => (prev === mode ? 'default' : mode));
+        };
 
-        const currentTrack = tracks[currentIndex];
+        const currentTrack = tracks.find(t => t.originalIndex === currentIndex);
 
         return (
             <div className="flex flex-col h-screen text-white">
-                <audio ref={audioRef} preload="auto"></audio>
+                <audio ref={audioRef} preload="auto" crossOrigin="anonymous"></audio>
                 <div id="toast-container" className="fixed bottom-5 right-5 z-50 flex flex-col gap-3">
                     {toasts.map(toast => <Toast key={toast.id} {...toast} />)}
                 </div>
@@ -365,23 +559,70 @@
                     {/* Left side: Playlist */}
                     <aside className="panel rounded-lg w-full lg:w-1/3 flex flex-col overflow-hidden">
                         <div className="p-4 border-b border-white/10 flex items-center gap-3">
-                           <button onClick={onBack} className="text-neon hover:text-white"><i className="fas fa-arrow-left"></i></button>
+                           <button onClick={onBack} className="text-neon hover:text-white transition-colors"><i className="fas fa-arrow-left"></i></button>
                            <h2 className="text-xl font-bold truncate">{collection.name}</h2>
                         </div>
+                        
+                        {/* Search and Sort */}
+                        <div className="p-3 border-b border-white/10">
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    placeholder="Search tracks..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full bg-white/5 rounded-full py-2 px-4 text-sm pl-10 focus:outline-none focus:ring-1 focus:ring-neon"
+                                />
+                                <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-muted"></i>
+                            </div>
+                            <div className="flex items-center gap-2 mt-2">
+                                <span className="text-xs text-muted">Sort by:</span>
+                                <button
+                                    onClick={() => setSort('title-asc')}
+                                    className={`text-xs px-3 py-1 rounded-full ${sortMode === 'title-asc' ? 'bg-neon text-bg' : 'bg-white/5 text-muted hover:bg-white/10'}`}
+                                >
+                                    A-Z <i className="fas fa-arrow-down-a-z ml-1"></i>
+                                </button>
+                                <button
+                                    onClick={() => setSort('title-desc')}
+                                    className={`text-xs px-3 py-1 rounded-full ${sortMode === 'title-desc' ? 'bg-neon text-bg' : 'bg-white/5 text-muted hover:bg-white/10'}`}
+                                >
+                                    Z-A <i className="fas fa-arrow-up-z-a ml-1"></i>
+                                </button>
+                                {sortMode !== 'default' && (
+                                    <button
+                                        onClick={() => setSortMode('default')}
+                                        className="text-xs text-muted hover:text-white"
+                                        title="Clear sort"
+                                    >
+                                        <i className="fas fa-times"></i>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        
                         <div id="playlist" className="flex-1 overflow-y-auto p-2 space-y-2">
                            {isLoading && !tracks.length ? (
-                               <div className="text-center p-8 text-muted">
-                                   <i className="fas fa-spinner fa-spin text-2xl"></i>
-                                   <p className="mt-2">Loading music...</p>
+                               <div className="flex items-center justify-center h-full text-center p-8 text-muted">
+                                   <div>
+                                       <i className="fas fa-spinner fa-spin text-3xl"></i>
+                                       <p className="mt-3">Loading music...</p>
+                                   </div>
                                </div>
-                           ) : tracks.length > 0 ? (
-                               tracks.map((track, index) => (
+                           ) : filteredAndSortedTracks.length > 0 ? (
+                               filteredAndSortedTracks.map((track) => (
                                    <div 
                                       key={track.filename}
-                                      onClick={() => playTrack(index)}
-                                      className={`flex items-center gap-4 p-3 rounded-md cursor-pointer transition-all ${currentIndex === index ? 'bg-neon/20 border-l-4 border-neon' : 'hover:bg-white/5'}`}
+                                      onClick={() => playTrack(track.originalIndex)}
+                                      className={`flex items-center gap-4 p-3 rounded-md cursor-pointer transition-all ${currentIndex === track.originalIndex ? 'bg-neon/20 border-l-4 border-neon' : 'hover:bg-white/5'}`}
                                     >
-                                       <div className="text-center w-8 text-muted">{index + 1}</div>
+                                       <div className="text-center w-8 text-muted">
+                                           {currentIndex === track.originalIndex && isPlaying ? (
+                                               <i className="fas fa-wave-square text-neon"></i>
+                                           ) : (
+                                               <i className="fas fa-music"></i>
+                                           )}
+                                       </div>
                                        <div className="truncate">
                                            <p className="font-semibold truncate">{track.title}</p>
                                            <p className="text-xs text-muted">{track.sizeMB} MB</p>
@@ -389,7 +630,9 @@
                                    </div>
                                ))
                            ) : (
-                               <div className="text-center p-8 text-muted">No music found.</div>
+                               <div className="text-center p-8 text-muted">
+                                {searchTerm ? 'No tracks match your search.' : 'No music found.'}
+                               </div>
                            )}
                         </div>
                     </aside>
@@ -417,8 +660,7 @@
                                     max={duration || 100}
                                     value={currentTime}
                                     onChange={(e) => audioRef.current.currentTime = e.target.value}
-                                    className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer"
-                                    style={{'--progress': `${(currentTime / duration) * 100}%`}}
+                                    className="w-full progress-bar"
                                 />
                                 <div className="flex justify-between text-xs text-muted mt-1">
                                     <span>{formatTime(currentTime)}</span>
@@ -450,19 +692,24 @@
                                 </button>
                             </div>
                             
+                            {/* Visualizer */}
+                            <div className="w-full max-w-sm mt-8">
+                                <canvas ref={canvasRef} width="300" height="40" className="w-full h-10"></canvas>
+                            </div>
+                            
                             {/* Volume and Speed Controls */}
-                            <div className="flex items-center justify-between w-full max-w-sm mt-8">
-                                <div className="flex items-center gap-3 text-muted">
+                            <div className="flex items-center justify-between w-full max-w-sm mt-4">
+                                <div className="flex items-center gap-2 text-muted">
                                     <i className="fas fa-tachometer-alt"></i>
                                     <select 
                                         value={playbackRate} 
                                         onChange={handleSpeedChange}
-                                        className="bg-transparent text-muted text-sm focus:outline-none appearance-none"
+                                        className="bg-transparent text-muted text-sm focus:outline-none rounded-md px-2 py-1 speed-select"
                                     >
                                         <option value="0.5">0.5x</option>
-                                        <option value="1">1x</option>
+                                        <option value="1">1.0x</option>
                                         <option value="1.5">1.5x</option>
-                                        <option value="2">2x</option>
+                                        <option value="2">2.0x</option>
                                     </select>
                                 </div>
                                 <div className="flex items-center gap-3 w-1/2 max-w-xs">
@@ -476,7 +723,7 @@
                                         step="0.01"
                                         value={volume}
                                         onChange={handleVolumeChange}
-                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer"
+                                        className="w-full volume-bar"
                                     />
                                 </div>
                             </div>
