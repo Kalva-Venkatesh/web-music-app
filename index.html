@@ -143,6 +143,81 @@
         color: #e6eef1;
     }
 
+    /* Mobile optimizations */
+    @media (max-width: 768px) {
+      .mobile-player {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: var(--panel);
+        border-top: 1px solid rgba(255,255,255,0.1);
+        padding: 0.75rem;
+        z-index: 50;
+      }
+      .mobile-player .track-info {
+        max-width: 60%;
+      }
+      .mobile-player-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .mobile-mini-player {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .mobile-expanded-player {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--bg);
+        z-index: 100;
+        padding: 1rem;
+        overflow-y: auto;
+      }
+    }
+
+    /* Loading animation */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .loading-pulse {
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    /* Image placeholders with gradients */
+    .placeholder-gradient-1 {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .placeholder-gradient-2 {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+    .placeholder-gradient-3 {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+    .placeholder-gradient-4 {
+      background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    }
+    .placeholder-gradient-5 {
+      background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    }
+    .placeholder-gradient-6 {
+      background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    }
+
+    /* Optimize animations for performance */
+    .will-change-transform {
+      will-change: transform;
+    }
+    .will-change-opacity {
+      will-change: opacity;
+    }
+
   </style>
 </head>
 <body class="overflow-hidden">
@@ -150,17 +225,47 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+    const { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } = React;
 
     // --- Configuration for Music Collections ---
     // IMPORTANT: Replace placeholders with your actual public MEGA folder URLs.
     const musicCollections = [
-      { name: 'Hanuman Songs', icon: 'fas fa-om', megaUrl: 'https://mega.nz/folder/...' }, // Example from your request
-      { name: 'Lo-Fi Beats', icon: 'fas fa-headphones', megaUrl: 'https://mega.nz/folder/...' },
-      { name: 'Workout Hits', icon: 'fas fa-dumbbell', megaUrl: 'https://mega.nz/folder/xMtmxLbT#i7vFt_r_e3iPIn1cINWgbA' },
-      { name: 'Classical Mood', icon: 'fas fa-guitar', megaUrl: 'https://mega.nz/folder/...' },
-      { name: 'Podcast Specials', icon: 'fas fa-microphone-alt', megaUrl: 'https://mega.nz/folder/...' },
-      { name: 'Retro Vibes', icon: 'fas fa-compact-disc', megaUrl: '' }, // Example with no link
+      { 
+        name: 'Hanuman Songs', 
+        icon: 'fas fa-om', 
+        megaUrl: 'https://mega.nz/folder/...',
+        image: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=300&h=300&fit=crop&crop=center' // Example image URL
+      },
+      { 
+        name: 'Lo-Fi Beats', 
+        icon: 'fas fa-headphones', 
+        megaUrl: 'https://mega.nz/folder/...',
+        image: 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=300&h=300&fit=crop&crop=center'
+      },
+      { 
+        name: 'Workout Hits', 
+        icon: 'fas fa-dumbbell', 
+        megaUrl: 'https://mega.nz/folder/xMtmxLbT#i7vFt_r_e3iPIn1cINWgbA',
+        image: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=300&h=300&fit=crop&crop=center'
+      },
+      { 
+        name: 'Classical Mood', 
+        icon: 'fas fa-guitar', 
+        megaUrl: 'https://mega.nz/folder/RcFwjTwK#t5p9O6IfHA5wlG6kaI_Ftg',
+        image: 'https://images.unsplash.com/photo-1507838153414-b4b713384a76?w=300&h=300&fit=crop&crop=center'
+      },
+      { 
+        name: 'Podcast Specials', 
+        icon: 'fas fa-microphone-alt', 
+        megaUrl: 'https://mega.nz/folder/...',
+        image: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=300&h=300&fit=crop&crop=center'
+      },
+      { 
+        name: 'Retro Vibes', 
+        icon: 'fas fa-compact-disc', 
+        megaUrl: '',
+        image: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop&crop=center'
+      },
     ];
     
     // --- Helper Components ---
@@ -176,16 +281,52 @@
         }, []);
 
         return (
-            <div className={`toast ${type} ${show ? 'show' : ''}`}>
+            <div className={`toast ${type} ${show ? 'show' : ''} will-change-transform`}>
                 {message}
             </div>
         );
+    };
+
+    // Image component with fallback
+    const ImageWithFallback = ({ src, alt, className, fallbackIcon = 'fas fa-music' }) => {
+      const [hasError, setHasError] = useState(false);
+      const [isLoading, setIsLoading] = useState(true);
+      
+      // Generate a consistent gradient based on the alt text
+      const gradientIndex = useMemo(() => {
+        let hash = 0;
+        for (let i = 0; i < alt.length; i++) {
+          hash = alt.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        return Math.abs(hash) % 6 + 1;
+      }, [alt]);
+
+      return (
+        <div className={`${className} overflow-hidden flex items-center justify-center`}>
+          {!hasError && src ? (
+            <img 
+              src={src} 
+              alt={alt}
+              className={`w-full h-full object-cover ${isLoading ? 'loading-pulse' : ''}`}
+              onLoad={() => setIsLoading(false)}
+              onError={() => {
+                setIsLoading(false);
+                setHasError(true);
+              }}
+            />
+          ) : (
+            <div className={`w-full h-full flex items-center justify-center placeholder-gradient-${gradientIndex}`}>
+              <i className={`${fallbackIcon} text-white text-2xl`}></i>
+            </div>
+          )}
+        </div>
+      );
     };
     
     // --- Main App Components ---
     const CollectionSelector = ({ onSelectCollection }) => {
         return (
-            <div className="flex flex-col items-center justify-center h-full p-4 md:p-8">
+            <div className="flex flex-col items-center justify-center h-full p-4 md:p-8 overflow-y-auto">
                 <h1 className="text-4xl md:text-5xl font-bold mb-8" style={{ textShadow: '0 0 15px var(--neon)'}}>My Music App</h1>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 md:gap-6 w-full max-w-6xl">
                     {musicCollections.map(collection => (
@@ -194,13 +335,18 @@
                             onClick={() => collection.megaUrl && onSelectCollection(collection)}
                             className={`
                                 panel aspect-square rounded-lg flex flex-col items-center justify-center p-4 text-center
-                                transition-all duration-300 transform
+                                transition-all duration-300 transform will-change-transform
                                 ${collection.megaUrl ? 'cursor-pointer hover:scale-105 hover:border-neon' : 'opacity-50 cursor-not-allowed'}
                             `}
                             style={collection.megaUrl ? { borderColor: 'rgba(255,255,255,0.05)' } : {}}
                         >
-                            <i className={`${collection.icon} text-4xl md:text-5xl text-neon mb-3`} style={{ textShadow: '0 0 10px var(--neon)'}}></i>
-                            <span className="font-semibold text-sm md:text-base">{collection.name}</span>
+                            <ImageWithFallback 
+                              src={collection.image} 
+                              alt={collection.name}
+                              className="w-16 h-16 md:w-20 md:h-20 rounded-full mb-3"
+                              fallbackIcon={collection.icon}
+                            />
+                            <span className="font-semibold text-sm md:text-base mt-2">{collection.name}</span>
                         </div>
                     ))}
                 </div>
@@ -222,6 +368,7 @@
         const [playbackRate, setPlaybackRate] = useState(1);
         const [searchTerm, setSearchTerm] = useState('');
         const [sortMode, setSortMode] = useState('default'); // 'default', 'title-asc', 'title-desc'
+        const [isMobilePlayerExpanded, setIsMobilePlayerExpanded] = useState(false);
         
         const audioRef = useRef(null);
         const blobUrlRef = useRef(null);
@@ -236,6 +383,9 @@
         const animationFrameRef = useRef(null);
         const [isAudioContextInit, setIsAudioContextInit] = useState(false);
 
+        // Performance optimization: Debounce search
+        const debouncedSearchTerm = useDebounce(searchTerm, 300);
+
         const showToast = (message, type = 'success') => {
             const id = Date.now();
             setToasts(prev => [...prev, { id, message, type }]);
@@ -243,6 +393,23 @@
                 setToasts(currentToasts => currentToasts.filter(toast => toast.id !== id));
             }, 3200);
         };
+
+        // Custom hook for debouncing
+        function useDebounce(value, delay) {
+          const [debouncedValue, setDebouncedValue] = useState(value);
+          
+          useEffect(() => {
+            const handler = setTimeout(() => {
+              setDebouncedValue(value);
+            }, delay);
+            
+            return () => {
+              clearTimeout(handler);
+            };
+          }, [value, delay]);
+          
+          return debouncedValue;
+        }
 
         const fetchTracks = useCallback(async () => {
             setIsLoading(true);
@@ -271,7 +438,9 @@
                     title: f.name.replace(/\.[^/.]+$/, ''),
                     filename: f.name,
                     sizeMB: (f.size / 1024 / 1024).toFixed(2),
-                    originalIndex: i // Important: keep original index
+                    originalIndex: i, // Important: keep original index
+                    // Generate a unique image for each track based on title
+                    image: `https://picsum.photos/seed/${encodeURIComponent(f.name)}/300/300`
                 }));
                 setTracks(trackMeta);
             } catch (err) {
@@ -299,14 +468,14 @@
             // 'default' sorting is the original fetch order, which is already set.
 
             // 2. Filter
-            if (searchTerm) {
+            if (debouncedSearchTerm) {
                 processedTracks = processedTracks.filter(track =>
-                    track.title.toLowerCase().includes(searchTerm.toLowerCase())
+                    track.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
                 );
             }
             
             return processedTracks;
-        }, [tracks, sortMode, searchTerm]);
+        }, [tracks, sortMode, debouncedSearchTerm]);
 
         const revokeBlob = () => {
           if (blobUrlRef.current) {
@@ -548,6 +717,142 @@
 
         const currentTrack = tracks.find(t => t.originalIndex === currentIndex);
 
+        // Mobile player components
+        const MobileMiniPlayer = () => {
+            if (!currentTrack || isMobilePlayerExpanded) return null;
+            
+            return (
+                <div className="mobile-player">
+                    <div className="mobile-player-controls">
+                        <div className="mobile-mini-player">
+                            <ImageWithFallback 
+                                src={currentTrack.image} 
+                                alt={currentTrack.title}
+                                className="w-10 h-10 rounded"
+                            />
+                            <div className="track-info truncate">
+                                <p className="font-semibold truncate">{currentTrack.title}</p>
+                                <p className="text-xs text-muted truncate">{collection.name}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <button onClick={handlePlayPause} className="text-neon">
+                                <i className={`fas ${isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
+                            </button>
+                            <button onClick={() => setIsMobilePlayerExpanded(true)}>
+                                <i className="fas fa-chevron-up text-muted"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const MobileExpandedPlayer = () => {
+            if (!isMobilePlayerExpanded) return null;
+            
+            return (
+                <div className="mobile-expanded-player">
+                    <div className="flex flex-col h-full">
+                        <div className="flex justify-between items-center mb-6">
+                            <button onClick={() => setIsMobilePlayerExpanded(false)} className="text-neon">
+                                <i className="fas fa-chevron-down"></i>
+                            </button>
+                            <h2 className="text-xl font-bold">Now Playing</h2>
+                            <div className="w-6"></div> {/* Spacer for alignment */}
+                        </div>
+                        
+                        <div className="flex-1 flex flex-col items-center justify-center">
+                            <div className="w-64 h-64 rounded-lg overflow-hidden mb-8">
+                                <ImageWithFallback 
+                                    src={currentTrack?.image} 
+                                    alt={currentTrack?.title || 'Album Art'}
+                                    className="w-full h-full"
+                                />
+                            </div>
+                            
+                            <h2 className="text-2xl font-bold text-center mb-2">{currentTrack?.title || 'Select a Song'}</h2>
+                            <p className="text-muted mb-8">{collection.name}</p>
+                            
+                            {/* Progress Bar */}
+                            <div className="w-full mb-6">
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max={duration || 100}
+                                    value={currentTime}
+                                    onChange={(e) => audioRef.current.currentTime = e.target.value}
+                                    className="w-full progress-bar"
+                                />
+                                <div className="flex justify-between text-xs text-muted mt-1">
+                                    <span>{formatTime(currentTime)}</span>
+                                    <span>{formatTime(duration)}</span>
+                                </div>
+                            </div>
+                            
+                            {/* Controls */}
+                            <div className="flex items-center justify-center gap-6 mb-8">
+                                <button title="Shuffle" onClick={() => setShuffle(!shuffle)} className={`text-xl ${shuffle ? 'text-neon' : 'text-muted'}`}>
+                                    <i className="fas fa-shuffle"></i>
+                                </button>
+                                <button onClick={handlePrev} className="text-2xl text-muted">
+                                    <i className="fas fa-backward-step"></i>
+                                </button>
+                                <button
+                                    onClick={handlePlayPause}
+                                    className="w-16 h-16 rounded-full flex items-center justify-center text-3xl"
+                                    style={{ background: 'var(--neon)', color: 'var(--bg)', boxShadow: '0 0 25px var(--neon)' }}
+                                >
+                                    <i className={`fas ${isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
+                                </button>
+                                <button onClick={handleNext} className="text-2xl text-muted">
+                                    <i className="fas fa-forward-step"></i>
+                                </button>
+                                <button title="Repeat" onClick={cycleRepeatMode} className={`relative text-xl ${repeatMode !== 'off' ? 'text-neon' : 'text-muted'}`}>
+                                    <i className="fas fa-repeat"></i>
+                                    {repeatMode === 'one' && <span className="absolute text-xs -top-1 -right-2 bg-neon text-bg rounded-full w-4 h-4 flex items-center justify-center font-bold">1</span>}
+                                </button>
+                            </div>
+                            
+                            {/* Volume and Speed Controls */}
+                            <div className="flex items-center justify-between w-full max-w-sm">
+                                <div className="flex items-center gap-2 text-muted">
+                                    <i className="fas fa-tachometer-alt"></i>
+                                    <select 
+                                        value={playbackRate} 
+                                        onChange={handleSpeedChange}
+                                        className="bg-transparent text-muted text-sm focus:outline-none rounded-md px-2 py-1 speed-select"
+                                    >
+                                        <option value="0.5">0.5x</option>
+                                        <option value="1">1.0x</option>
+                                        <option value="1.5">1.5x</option>
+                                        <option value="2">2.0x</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-3 w-1/2 max-w-xs">
+                                    <button onClick={toggleMute}>
+                                        <i className={`fas ${volume === 0 ? 'fa-volume-xmark' : (volume < 0.5 ? 'fa-volume-low' : 'fa-volume-high')} text-muted`}></i>
+                                    </button>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="1"
+                                        step="0.01"
+                                        value={volume}
+                                        onChange={handleVolumeChange}
+                                        className="w-full volume-bar"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Check if we're on a mobile device
+        const isMobile = window.innerWidth <= 768;
+
         return (
             <div className="flex flex-col h-screen text-white">
                 <audio ref={audioRef} preload="auto" crossOrigin="anonymous"></audio>
@@ -555,7 +860,9 @@
                     {toasts.map(toast => <Toast key={toast.id} {...toast} />)}
                 </div>
 
-                <div className="flex-grow flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
+                {isMobile && <MobileExpandedPlayer />}
+                
+                <div className={`flex-grow flex flex-col lg:flex-row gap-4 p-4 overflow-hidden ${isMobilePlayerExpanded ? 'hidden' : ''}`}>
                     {/* Left side: Playlist */}
                     <aside className="panel rounded-lg w-full lg:w-1/3 flex flex-col overflow-hidden">
                         <div className="p-4 border-b border-white/10 flex items-center gap-3">
@@ -612,21 +919,28 @@
                            ) : filteredAndSortedTracks.length > 0 ? (
                                filteredAndSortedTracks.map((track) => (
                                    <div 
-                                      key={track.filename}
-                                      onClick={() => playTrack(track.originalIndex)}
-                                      className={`flex items-center gap-4 p-3 rounded-md cursor-pointer transition-all ${currentIndex === track.originalIndex ? 'bg-neon/20 border-l-4 border-neon' : 'hover:bg-white/5'}`}
-                                    >
-                                       <div className="text-center w-8 text-muted">
-                                           {currentIndex === track.originalIndex && isPlaying ? (
-                                               <i className="fas fa-wave-square text-neon"></i>
-                                           ) : (
-                                               <i className="fas fa-music"></i>
-                                           )}
-                                       </div>
-                                       <div className="truncate">
-                                           <p className="font-semibold truncate">{track.title}</p>
-                                           <p className="text-xs text-muted">{track.sizeMB} MB</p>
-                                       </div>
+                                     key={track.filename}
+                                     onClick={() => playTrack(track.originalIndex)}
+                                     className={`flex items-center gap-4 p-3 rounded-md cursor-pointer transition-all ${currentIndex === track.originalIndex ? 'bg-neon/20 border-l-4 border-neon' : 'hover:bg-white/5'}`}
+                                   >
+                                      <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
+                                          <ImageWithFallback 
+                                            src={track.image} 
+                                            alt={track.title}
+                                            className="w-full h-full"
+                                          />
+                                      </div>
+                                      <div className="truncate flex-1">
+                                          <p className="font-semibold truncate">{track.title}</p>
+                                          <p className="text-xs text-muted">{track.sizeMB} MB</p>
+                                      </div>
+                                      <div className="text-center w-8 text-muted">
+                                          {currentIndex === track.originalIndex && isPlaying ? (
+                                              <i className="fas fa-wave-square text-neon"></i>
+                                          ) : (
+                                              <i className="fas fa-music"></i>
+                                          )}
+                                      </div>
                                    </div>
                                ))
                            ) : (
@@ -637,99 +951,102 @@
                         </div>
                     </aside>
 
-                    {/* Right side: Player */}
-                    <main className="panel rounded-lg w-full lg:w-2/3 flex-1 flex flex-col justify-center p-6 md:p-8">
-                        <div className="flex flex-col items-center text-center">
-                            <div className="w-40 h-40 md:w-52 md:h-52 bg-gradient-to-br from-black/20 to-white/5 rounded-lg flex items-center justify-center shadow-lg mb-6">
-                                {currentTrack ? (
-                                    <div className="text-8xl font-bold" style={{color: 'var(--neon)', textShadow: '0 0 15px var(--neon)'}}>
-                                        {currentTrack.title.charAt(0).toUpperCase()}
-                                    </div>
-                                ) : (
-                                    <i className="fas fa-music text-6xl text-muted"></i>
-                                )}
-                            </div>
-                            <h2 className="text-2xl md:text-3xl font-bold truncate max-w-full">{currentTrack?.title || 'Select a Song'}</h2>
-                            <p className="text-muted mt-1">{collection.name}</p>
+                    {/* Right side: Player - Hidden on mobile when mini player is active */}
+                    {!isMobile && (
+                        <main className="panel rounded-lg w-full lg:w-2/3 flex-1 flex flex-col justify-center p-6 md:p-8">
+                            <div className="flex flex-col items-center text-center">
+                                <div className="w-40 h-40 md:w-52 md:h-52 bg-gradient-to-br from-black/20 to-white/5 rounded-lg overflow-hidden shadow-lg mb-6">
+                                    <ImageWithFallback 
+                                        src={currentTrack?.image} 
+                                        alt={currentTrack?.title || 'Album Art'}
+                                        className="w-full h-full"
+                                    />
+                                </div>
+                                <h2 className="text-2xl md:text-3xl font-bold truncate max-w-full">{currentTrack?.title || 'Select a Song'}</h2>
+                                <p className="text-muted mt-1">{collection.name}</p>
 
-                            {/* Progress Bar */}
-                            <div className="w-full max-w-lg mt-6">
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max={duration || 100}
-                                    value={currentTime}
-                                    onChange={(e) => audioRef.current.currentTime = e.target.value}
-                                    className="w-full progress-bar"
-                                />
-                                <div className="flex justify-between text-xs text-muted mt-1">
-                                    <span>{formatTime(currentTime)}</span>
-                                    <span>{formatTime(duration)}</span>
-                                </div>
-                            </div>
-                            
-                            {/* Main Controls */}
-                            <div className="flex items-center gap-6 mt-6">
-                                <button title="Shuffle" onClick={() => setShuffle(!shuffle)} className={`text-xl transition-colors ${shuffle ? 'text-neon' : 'text-muted hover:text-white'}`}>
-                                    <i className="fas fa-shuffle"></i>
-                                </button>
-                                <button onClick={handlePrev} className="text-2xl text-muted hover:text-white transition-colors">
-                                    <i className="fas fa-backward-step"></i>
-                                </button>
-                                <button
-                                    onClick={handlePlayPause}
-                                    className="w-16 h-16 rounded-full flex items-center justify-center text-3xl transition-all transform hover:scale-105"
-                                    style={{ background: 'var(--neon)', color: 'var(--bg)', boxShadow: '0 0 25px var(--neon)' }}
-                                >
-                                    <i className={`fas ${isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
-                                </button>
-                                <button onClick={handleNext} className="text-2xl text-muted hover:text-white transition-colors">
-                                    <i className="fas fa-forward-step"></i>
-                                </button>
-                                <button title="Repeat" onClick={cycleRepeatMode} className={`relative text-xl transition-colors ${repeatMode !== 'off' ? 'text-neon' : 'text-muted hover:text-white'}`}>
-                                    <i className="fas fa-repeat"></i>
-                                    {repeatMode === 'one' && <span className="absolute text-xs -top-1 -right-2 bg-neon text-bg rounded-full w-4 h-4 flex items-center justify-center font-bold">1</span>}
-                                </button>
-                            </div>
-                            
-                            {/* Visualizer */}
-                            <div className="w-full max-w-sm mt-8">
-                                <canvas ref={canvasRef} width="300" height="40" className="w-full h-10"></canvas>
-                            </div>
-                            
-                            {/* Volume and Speed Controls */}
-                            <div className="flex items-center justify-between w-full max-w-sm mt-4">
-                                <div className="flex items-center gap-2 text-muted">
-                                    <i className="fas fa-tachometer-alt"></i>
-                                    <select 
-                                        value={playbackRate} 
-                                        onChange={handleSpeedChange}
-                                        className="bg-transparent text-muted text-sm focus:outline-none rounded-md px-2 py-1 speed-select"
-                                    >
-                                        <option value="0.5">0.5x</option>
-                                        <option value="1">1.0x</option>
-                                        <option value="1.5">1.5x</option>
-                                        <option value="2">2.0x</option>
-                                    </select>
-                                </div>
-                                <div className="flex items-center gap-3 w-1/2 max-w-xs">
-                                    <button onClick={toggleMute}>
-                                        <i className={`fas ${volume === 0 ? 'fa-volume-xmark' : (volume < 0.5 ? 'fa-volume-low' : 'fa-volume-high')} text-muted`}></i>
-                                    </button>
+                                {/* Progress Bar */}
+                                <div className="w-full max-w-lg mt-6">
                                     <input
                                         type="range"
                                         min="0"
-                                        max="1"
-                                        step="0.01"
-                                        value={volume}
-                                        onChange={handleVolumeChange}
-                                        className="w-full volume-bar"
+                                        max={duration || 100}
+                                        value={currentTime}
+                                        onChange={(e) => audioRef.current.currentTime = e.target.value}
+                                        className="w-full progress-bar"
                                     />
+                                    <div className="flex justify-between text-xs text-muted mt-1">
+                                        <span>{formatTime(currentTime)}</span>
+                                        <span>{formatTime(duration)}</span>
+                                    </div>
+                                </div>
+                                
+                                {/* Main Controls */}
+                                <div className="flex items-center gap-6 mt-6">
+                                    <button title="Shuffle" onClick={() => setShuffle(!shuffle)} className={`text-xl transition-colors ${shuffle ? 'text-neon' : 'text-muted hover:text-white'}`}>
+                                        <i className="fas fa-shuffle"></i>
+                                    </button>
+                                    <button onClick={handlePrev} className="text-2xl text-muted hover:text-white transition-colors">
+                                        <i className="fas fa-backward-step"></i>
+                                    </button>
+                                    <button
+                                        onClick={handlePlayPause}
+                                        className="w-16 h-16 rounded-full flex items-center justify-center text-3xl transition-all transform hover:scale-105"
+                                        style={{ background: 'var(--neon)', color: 'var(--bg)', boxShadow: '0 0 25px var(--neon)' }}
+                                    >
+                                        <i className={`fas ${isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
+                                    </button>
+                                    <button onClick={handleNext} className="text-2xl text-muted hover:text-white transition-colors">
+                                        <i className="fas fa-forward-step"></i>
+                                    </button>
+                                    <button title="Repeat" onClick={cycleRepeatMode} className={`relative text-xl transition-colors ${repeatMode !== 'off' ? 'text-neon' : 'text-muted hover:text-white'}`}>
+                                        <i className="fas fa-repeat"></i>
+                                        {repeatMode === 'one' && <span className="absolute text-xs -top-1 -right-2 bg-neon text-bg rounded-full w-4 h-4 flex items-center justify-center font-bold">1</span>}
+                                    </button>
+                                </div>
+                                
+                                {/* Visualizer */}
+                                <div className="w-full max-w-sm mt-8">
+                                    <canvas ref={canvasRef} width="300" height="40" className="w-full h-10"></canvas>
+                                </div>
+                                
+                                {/* Volume and Speed Controls */}
+                                <div className="flex items-center justify-between w-full max-w-sm mt-4">
+                                    <div className="flex items-center gap-2 text-muted">
+                                        <i className="fas fa-tachometer-alt"></i>
+                                        <select 
+                                            value={playbackRate} 
+                                            onChange={handleSpeedChange}
+                                            className="bg-transparent text-muted text-sm focus:outline-none rounded-md px-2 py-1 speed-select"
+                                        >
+                                            <option value="0.5">0.5x</option>
+                                            <option value="1">1.0x</option>
+                                            <option value="1.5">1.5x</option>
+                                            <option value="2">2.0x</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex items-center gap-3 w-1/2 max-w-xs">
+                                        <button onClick={toggleMute}>
+                                            <i className={`fas ${volume === 0 ? 'fa-volume-xmark' : (volume < 0.5 ? 'fa-volume-low' : 'fa-volume-high')} text-muted`}></i>
+                                        </button>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="1"
+                                            step="0.01"
+                                            value={volume}
+                                            onChange={handleVolumeChange}
+                                            className="w-full volume-bar"
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </main>
+                        </main>
+                    )}
                 </div>
+                
+                {/* Mobile Mini Player */}
+                {isMobile && <MobileMiniPlayer />}
             </div>
         );
     };
@@ -751,4 +1068,3 @@
   </script>
 </body>
 </html>
-
